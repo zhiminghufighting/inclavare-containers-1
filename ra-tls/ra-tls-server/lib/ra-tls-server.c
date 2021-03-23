@@ -107,3 +107,73 @@ int ra_tls_server_startup(sgx_enclave_id_t id, int connd)
 
 	return ret;
 }
+
+int ra_tls_server_startup_protocol(sgx_enclave_id_t id, int connd, unsigned char* sendmsg, unsigned int sendmsglen)
+{
+#ifdef SGX_DEBUG
+        enc_wolfSSL_Debugging_ON(id);
+#else
+        enc_wolfSSL_Debugging_OFF(id);
+#endif
+
+        int ret;
+        int sgxStatus;
+        sgxStatus = enc_wolfSSL_Init(id, &ret);
+        if (sgxStatus != SGX_SUCCESS || ret != WOLFSSL_SUCCESS)
+                return -1;
+
+        WOLFSSL_METHOD *method;
+        sgxStatus = enc_wolfTLSv1_2_server_method(id, &method);
+        if (sgxStatus != SGX_SUCCESS || !method)
+                return -1;
+
+        WOLFSSL_CTX *ctx;
+        sgxStatus = enc_wolfSSL_CTX_new(id, &ctx, method);
+        if (sgxStatus != SGX_SUCCESS || !ctx)
+                goto err;
+
+        sgxStatus = enc_create_key_and_x509(id, ctx);
+        assert(sgxStatus == SGX_SUCCESS);
+
+        WOLFSSL *ssl;
+        sgxStatus = enc_wolfSSL_new(id, &ssl, ctx);
+        if (sgxStatus != SGX_SUCCESS || !ssl)
+                goto err;
+
+        /* Attach wolfSSL to the socket */
+        sgxStatus = enc_wolfSSL_set_fd(id, &ret, ssl, connd);
+        if (sgxStatus != SGX_SUCCESS || ret != SSL_SUCCESS)
+                goto err_ssl;
+
+        fprintf(stdout, "Client connected successfully\n");
+
+        char buff[512];
+        size_t len;
+        memset(buff, 0, sizeof(buff));
+        sgxStatus = enc_wolfSSL_read(id, &ret, ssl, buff, sizeof(buff) - 1);
+        if (sgxStatus != SGX_SUCCESS || ret == -1)
+                goto err_ssl;
+
+        fprintf(stdout, "Server receive data: %s\n", buff);
+
+        /* Write our reply into buff */
+        memset(buff, 0, sizeof(buff));
+        memcpy(buff, sendmsg, sendmsglen);
+        len = sendmsglen;
+	fprintf(stdout, "Server send data: %s\n", buff);
+
+        /* Reply back to the client */
+        sgxStatus = enc_wolfSSL_write(id, &ret, ssl, buff, len);
+        if (sgxStatus != SGX_SUCCESS || ret != len)
+                ret = -1;
+
+      err_ssl:
+        enc_wolfSSL_free(id, ssl);
+      err_ctx:
+        sgxStatus = enc_wolfSSL_CTX_free(id, ctx);
+      err:
+        sgxStatus = enc_wolfSSL_Cleanup(id, &ret);
+
+        return ret;
+}
+

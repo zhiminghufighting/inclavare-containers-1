@@ -10,6 +10,7 @@ package remoteattestation
 #endif
 
 extern int ra_tls_echo(int sockfd, unsigned char* mrenclave, unsigned char* mrsigner);
+extern int ra_tls_enc_protocol(int sockfd, unsigned char* sendmsg, unsigned int sendmsglen, unsigned char* retmsg, unsigned int* recemsglen);
 */
 import "C"
 import (
@@ -75,3 +76,30 @@ func RemoteTlsSetupSock(address string, mrenclave unsafe.Pointer, mrsigner unsaf
 	C.ra_tls_echo(C.int(sockfd.Fd()), (*C.uchar)(mrenclave), (*C.uchar)(mrsigner))
 	return nil
 }
+
+//for manage porotol debug purpuse
+func RemoteTlsSetupSockProtocol(address string, sendmsg unsafe.Pointer, sendmsglen uint, retmsg unsafe.Pointer, recemsglen unsafe.Pointer) error {
+        addr := address
+        if addr == "" {
+                addr = defaultsockAddress
+        }
+
+        conn, err := net.Dial("unix", addr)
+        if err != nil {
+                return fmt.Errorf("unix connection failed with err %s.\n", err)
+        }
+        defer conn.Close()
+
+        unixConn, ok := conn.(*net.UnixConn)
+        if !ok {
+                return fmt.Errorf("casting to UnixConn failed.\n")
+        }
+
+        sockfd, err := unixConn.File()
+        if err != nil {
+                return err
+        }
+        C.ra_tls_enc_protocol(C.int(sockfd.Fd()), (*C.uchar)(sendmsg), (C.uint)(sendmsglen), (*C.uchar)(retmsg), (*C.uint)(recemsglen))
+        return nil
+}
+

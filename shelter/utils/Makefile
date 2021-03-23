@@ -30,7 +30,7 @@ GO_BUILD := CGO_ENABLED=1 $(GO) build $(MOD_VENDOR) -buildmode=pie $(GCFLAGS) $(
 	@echo $(GO_BUILD) -o $@ .
 	$(GO_BUILD) -o $@ .
 
-utils.a: obtaintarget.o
+utils.a: obtaintarget.o manageprotocol.o
 	@echo $(AR) rcs $@ $^
 	$(AR) rcs $@ $^
 

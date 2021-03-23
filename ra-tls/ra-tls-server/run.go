@@ -12,6 +12,7 @@ package main // import "github.com/inclavare-containers/inclavared"
 #include "sgx_urts.h"
 
 extern int ra_tls_server_startup(sgx_enclave_id_t id, int sockfd);
+extern int ra_tls_server_startup_protocol(sgx_enclave_id_t id, int connd, unsigned char* sendmsg, unsigned int sendmsglen);
 
 static sgx_enclave_id_t load_enclave(void)
 {
@@ -33,13 +34,23 @@ import "C"
 import (
 	"fmt"
 	"github.com/urfave/cli"
+	"encoding/json"
 	"net"
 	"syscall"
+	"unsafe"
 )
 
 const (
 	defaultAddress = "/run/rune/ra-tls.sock"
 )
+
+type EnclaveInfo struct{
+        Id string               `json:"string_id,omitempty"`
+        Msgtype string          `json:"string_type,omitempty"`
+        Version uint8           `json:"uint8_version,omitempty"`
+        Mrenclave [32]byte      `json:"byte_mrenclave,omitempty"`
+        Mrsigner  [32]byte      `json:"byte_mrsigner,omitempty"`
+}
 
 var runCommand = cli.Command{
 	Name:  "run",
@@ -104,9 +115,23 @@ EXAMPLE:
 			return err
 		}
 		defer connFile.Close()
+		sendCmd := EnclaveInfo{
+                        Id: "00001",
+                        Msgtype: "GETENCLAVEINFO",
+                        Version: 1,
+                        Mrenclave:[32]byte{0x01,0x02,0x03,0x04,0x05, 0x06,0x07, 0x08, 0x09,0x10, 0x11, 0x12, 0x13,0x14, 0x15,0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30, 0x31},
+                        Mrsigner: [32]byte{0x01,0x02,0x03,0x04,0x05, 0x06,0x07, 0x08, 0x09,0x10, 0x11, 0x12, 0x13,0x14, 0x15,0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30, 0x31, 0x32},
+                }
+                sendmsg , err := json.Marshal(sendCmd)
+                if err != nil{
+                        fmt.Printf("json marshal filed, err is %s.\n", err)
+                }
+                sendmsglen := (uint)(len(sendmsg))
+		data := make([]byte, sendmsglen)
+		data = sendmsg
 
-		C.ra_tls_server_startup(eid, C.int(connFile.Fd()))
-
+		//C.ra_tls_server_startup(eid, C.int(connFile.Fd()))
+		C.ra_tls_server_startup_protocol(eid, C.int(connFile.Fd()), (*C.uchar)((unsafe.Pointer)(&data[0])), (C.uint)(sendmsglen))
 		return nil
 	},
 }
